@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment / secrets — NEVER commit keys or tokens
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+coverage/
+
+# NOTE: .kiro/ is intentionally NOT ignored.
+# It is tracked and public (hackathon requirement — judges must see specs,
+# steering, and development evidence in a fresh clone).

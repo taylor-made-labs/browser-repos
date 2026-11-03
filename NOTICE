@@ -1,0 +1,27 @@
+browser-repos
+Copyright 2026 taylor-made-labs
+
+This product is dual-licensed under either of:
+  - MIT license (see LICENSE-MIT), or
+  - Apache License, Version 2.0 (see LICENSE-APACHE)
+at your option.
+
+================================================================================
+Third-party and upstream attributions
+================================================================================
+
+This seed scaffold vendors no third-party code yet, so there are no third-party
+attributions to record at this time.
+
+When the library core is implemented it is expected to depend on the projects
+below. Each is listed here ONLY once it is actually added as a dependency, with
+its license and attribution, and retains its own license:
+
+  - isomorphic-git (https://github.com/isomorphic-git/isomorphic-git)
+      License: MIT. Pure-JS Git implementation.
+  - @isomorphic-git/lightning-fs (https://github.com/isomorphic-git/lightning-fs)
+      License: MIT. IndexedDB-backed filesystem.
+
+Dependencies and their licenses are declared in package.json and the committed
+lockfile. Any further vendored code will be added here with its license and
+attribution before use.
