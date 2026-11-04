@@ -22,6 +22,8 @@ import type {
   LogOptions,
   StatusReport,
 } from './git-ops.js';
+import { BranchOps } from './branch-ops.js';
+import type { CreateBranchOptions } from './branch-ops.js';
 
 /** Absolute working-tree root inside the per-repo filesystem namespace. */
 const WORK_DIR = '/work';
@@ -54,6 +56,7 @@ export class BrowserRepo {
 
   private readonly backend: FsBackend;
   private readonly git: GitOps;
+  private readonly branches: BranchOps;
 
   /** @internal — constructed by the repo manager. */
   constructor(id: string, backend: FsBackend) {
@@ -61,6 +64,7 @@ export class BrowserRepo {
     this.namespace = backend.namespace;
     this.backend = backend;
     this.git = new GitOps(backend.fs, WORK_DIR);
+    this.branches = new BranchOps(backend.fs, WORK_DIR);
   }
 
   /**
@@ -226,6 +230,48 @@ export class BrowserRepo {
   /** List commits newest-first, optionally limited by `depth`. */
   async log(options?: LogOptions): Promise<CommitEntry[]> {
     return this.git.log(options);
+  }
+
+  // ---- Branches + checkout (slice 3): local, offline branching ----
+
+  /** The name of the branch HEAD currently points at (e.g. `main`). */
+  async currentBranch(): Promise<string> {
+    return this.branches.currentBranch();
+  }
+
+  /** List local branch names, sorted. */
+  async listBranches(): Promise<string[]> {
+    return this.branches.listBranches();
+  }
+
+  /** Whether a local branch with the given (validated) name exists. */
+  async hasBranch(name: string): Promise<boolean> {
+    return this.branches.hasBranch(name);
+  }
+
+  /**
+   * Create a branch at the current HEAD (or at `options.from`). HEAD is not
+   * moved unless `options.checkout` is true. See {@link BranchOps.createBranch}.
+   */
+  async createBranch(name: string, options?: CreateBranchOptions): Promise<void> {
+    return this.branches.createBranch(name, options);
+  }
+
+  /**
+   * Switch to an existing branch: move HEAD and rewrite the working tree to
+   * match. Refuses to run with uncommitted changes to tracked files. See
+   * {@link BranchOps.checkout}.
+   */
+  async checkout(name: string): Promise<void> {
+    return this.branches.checkout(name);
+  }
+
+  /**
+   * Delete a local branch. Throws for a nonexistent branch or the current one.
+   * See {@link BranchOps.deleteBranch}.
+   */
+  async deleteBranch(name: string): Promise<void> {
+    return this.branches.deleteBranch(name);
   }
 
   /** Create every missing parent directory for a repo-relative file path. */

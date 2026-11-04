@@ -21,8 +21,17 @@
  * - commit the index with caller-supplied author metadata (never a credential);
  * - list commit history newest-first, with an optional depth limit.
  *
- * Branches, checkout, and lossless export/import arrive in later slices behind
- * this same surface.
+ * Slice 3 adds local, offline branching on top of that:
+ * - create a branch (from HEAD or a named ref), list branches, delete a
+ *   branch, and report the current branch;
+ * - checkout (switch) a branch: move HEAD and rewrite the working tree, so a
+ *   file committed only on one branch is isolated from the others;
+ * - branch-name validation and a typed error taxonomy for invalid names,
+ *   missing branches, deleting the current branch, and uncommitted-change
+ *   conflicts on checkout.
+ *
+ * Lossless export/import and remote sync arrive in later slices behind this
+ * same surface.
  */
 
 /** Library semantic version, exposed for consumers and diagnostics. */
@@ -45,6 +54,9 @@ export type {
   LogOptions,
 } from './git-ops.js';
 
+export { BranchOps, assertValidBranchName } from './branch-ops.js';
+export type { CreateBranchOptions } from './branch-ops.js';
+
 export { normalizeRelPath } from './path.js';
 
 export type { FsBackend, FsBackendFactory, PromiseFs } from './fs-backend.js';
@@ -58,6 +70,10 @@ export {
   InvalidPathError,
   NotFoundError,
   NothingStagedError,
+  InvalidBranchNameError,
+  BranchNotFoundError,
+  BranchInUseError,
+  UncommittedChangesError,
   StorageError,
 } from './errors.js';
 export type { BrowserReposErrorCode } from './errors.js';
