@@ -53,7 +53,22 @@
  *   evicted store as `StorageLostError`, instead of reading it as an
  *   empty-but-valid repo and returning a silent wrong answer.
  *
- * Remote sync arrives in a later slice behind this same surface.
+ * Slice 6 is the dogfood-ready documentation slice. It does not change
+ * behavior; it consolidates and documents the public surface for *outside*
+ * adopters:
+ * - this module is the single supported entry point — everything an adopter
+ *   needs (the manager, the repo handle and its methods, every public type, and
+ *   every error class) is re-exported here, and internals stay internal;
+ * - the error taxonomy is completed with the remote/sync family
+ *   (`NetworkError`, `CorsError`, `AuthError`, `DivergenceError`,
+ *   `ConflictError`) so adopters can write `catch` handlers for the whole
+ *   contract today — the classes exist and carry distinct `code`/`name`
+ *   discriminators, but **no network code ships in this slice**;
+ * - a top-level `README.md` documents install, a quickstart, the full API
+ *   reference, the error table, and the durability caveats.
+ *
+ * Remote sync (the operations that will *throw* the remote error family) arrives
+ * in a later slice behind this same surface.
  */
 
 /** Library semantic version, exposed for consumers and diagnostics. */
@@ -109,21 +124,33 @@ export {
 export type { StorageErrorKind } from './durability.js';
 
 export {
+  // Base — catch this to handle any error this library throws.
   BrowserReposError,
+  // Repo lifecycle + path/validation.
   InvalidRepoIdError,
   RepoExistsError,
   RepoNotFoundError,
   InvalidPathError,
   NotFoundError,
+  // Git ops.
   NothingStagedError,
+  // Branches.
   InvalidBranchNameError,
   BranchNotFoundError,
   BranchInUseError,
   UncommittedChangesError,
+  // Export / import.
   InvalidArchiveError,
   ArchiveEntryRejectedError,
+  // Storage / durability.
   QuotaExceededError,
   StorageLostError,
   StorageError,
+  // Remote / sync contract (classes ship now; network ops land in a later slice).
+  NetworkError,
+  CorsError,
+  AuthError,
+  DivergenceError,
+  ConflictError,
 } from './errors.js';
 export type { BrowserReposErrorCode } from './errors.js';
