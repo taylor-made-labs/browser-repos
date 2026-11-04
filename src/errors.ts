@@ -29,6 +29,10 @@ export type BrowserReposErrorCode =
   | 'BRANCH_IN_USE'
   /** A checkout was refused because the working tree has uncommitted changes. */
   | 'UNCOMMITTED_CHANGES'
+  /** An import archive was malformed, truncated, or an unsupported version. */
+  | 'INVALID_ARCHIVE'
+  /** An archive entry was rejected on import (path traversal, oversize, etc.). */
+  | 'ARCHIVE_ENTRY_REJECTED'
   /** An underlying IndexedDB / filesystem operation failed. */
   | 'STORAGE_ERROR';
 
@@ -132,6 +136,32 @@ export class UncommittedChangesError extends BrowserReposError {
       `Cannot check out "${target}" with uncommitted changes in the working tree: commit or discard them first.`,
     );
     this.name = 'UncommittedChangesError';
+  }
+}
+
+/**
+ * An import archive was structurally invalid: bad magic, truncated, an
+ * unsupported format version, or a malformed header. Distinct from
+ * {@link ArchiveEntryRejectedError}, which is about a specific entry's content.
+ */
+export class InvalidArchiveError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('INVALID_ARCHIVE', message, cause === undefined ? undefined : { cause });
+    this.name = 'InvalidArchiveError';
+  }
+}
+
+/**
+ * An individual archive entry was rejected on import. This is a security
+ * boundary: a path that tries to escape the repo root (`..`, an absolute path,
+ * a backslash or drive-letter form, a NUL byte), or an entry that is malformed
+ * or oversized, is refused rather than written. The partially-built repo is
+ * rolled back so a rejected import leaves no repo behind.
+ */
+export class ArchiveEntryRejectedError extends BrowserReposError {
+  constructor(message: string) {
+    super('ARCHIVE_ENTRY_REJECTED', message);
+    this.name = 'ArchiveEntryRejectedError';
   }
 }
 

@@ -30,8 +30,18 @@
  *   missing branches, deleting the current branch, and uncommitted-change
  *   conflicts on checkout.
  *
- * Lossless export/import and remote sync arrive in later slices behind this
- * same surface.
+ * Slice 4 adds lossless export/import on top of all of that:
+ * - `repo.export()` serializes the ENTIRE repo — working tree, the full `.git`
+ *   (all objects, refs, every branch, complete history), the index/staged
+ *   state, and untracked files — byte-exact into one portable archive;
+ * - `manager.importRepo(id, archive)` reconstructs a fresh repo that is
+ *   byte-for-byte identical: same files + bytes, same branches, same commit
+ *   oids and history, same staged + untracked state, same current branch;
+ * - every archive entry path is validated on import (traversal / absolute /
+ *   malformed / oversize entries are rejected with a typed error), and the
+ *   archive is credential-free by construction.
+ *
+ * Remote sync arrives in a later slice behind this same surface.
  */
 
 /** Library semantic version, exposed for consumers and diagnostics. */
@@ -57,6 +67,17 @@ export type {
 export { BranchOps, assertValidBranchName } from './branch-ops.js';
 export type { CreateBranchOptions } from './branch-ops.js';
 
+export { exportRepo, importRepo, resolveImportPath } from './export-import.js';
+
+export {
+  packArchive,
+  unpackArchive,
+  ARCHIVE_FORMAT_VERSION,
+  MAX_ENTRY_BYTES,
+  MAX_ENTRIES,
+} from './archive.js';
+export type { ArchiveEntry, ArchiveHeader } from './archive.js';
+
 export { normalizeRelPath } from './path.js';
 
 export type { FsBackend, FsBackendFactory, PromiseFs } from './fs-backend.js';
@@ -74,6 +95,8 @@ export {
   BranchNotFoundError,
   BranchInUseError,
   UncommittedChangesError,
+  InvalidArchiveError,
+  ArchiveEntryRejectedError,
   StorageError,
 } from './errors.js';
 export type { BrowserReposErrorCode } from './errors.js';
