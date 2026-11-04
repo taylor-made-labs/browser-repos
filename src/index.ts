@@ -41,6 +41,18 @@
  *   malformed / oversize entries are rejected with a typed error), and the
  *   archive is credential-free by construction.
  *
+ * Slice 5 hardens durability on top of all of that, with evidence rather than
+ * assumption (see `DURABILITY.md`):
+ * - a per-repo mutation queue so two conflicting mutations on one repo
+ *   serialize instead of racing on the shared `.git` index and silently losing
+ *   an update;
+ * - distinct typed errors for storage pressure — `QuotaExceededError` when a
+ *   write exceeds the browser quota, kept separate from a generic
+ *   `StorageError`;
+ * - `RepoManager.checkIntegrity()` / `openRepoChecked()` to surface a lost or
+ *   evicted store as `StorageLostError`, instead of reading it as an
+ *   empty-but-valid repo and returning a silent wrong answer.
+ *
  * Remote sync arrives in a later slice behind this same surface.
  */
 
@@ -48,10 +60,15 @@
 export const VERSION = '0.1.0';
 
 export { RepoManager } from './repo-manager.js';
-export type { RepoManagerOptions, RepoInfo } from './repo-manager.js';
+export type {
+  RepoManagerOptions,
+  RepoInfo,
+  RepoIntegrity,
+  IntegrityReport,
+} from './repo-manager.js';
 
 export { BrowserRepo } from './repo.js';
-export type { DirEntry } from './repo.js';
+export type { DirEntry, RepoTransaction } from './repo.js';
 
 export { GitOps } from './git-ops.js';
 export type {
@@ -84,6 +101,14 @@ export type { FsBackend, FsBackendFactory, PromiseFs } from './fs-backend.js';
 export { lightningFsBackendFactory } from './fs-backend.js';
 
 export {
+  MutationQueue,
+  MutationQueueRegistry,
+  isQuotaExceeded,
+  classifyStorageError,
+} from './durability.js';
+export type { StorageErrorKind } from './durability.js';
+
+export {
   BrowserReposError,
   InvalidRepoIdError,
   RepoExistsError,
@@ -97,6 +122,8 @@ export {
   UncommittedChangesError,
   InvalidArchiveError,
   ArchiveEntryRejectedError,
+  QuotaExceededError,
+  StorageLostError,
   StorageError,
 } from './errors.js';
 export type { BrowserReposErrorCode } from './errors.js';

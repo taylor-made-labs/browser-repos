@@ -13,11 +13,14 @@ import type { FsBackend, FsBackendFactory } from './fs-backend.js';
 import { lightningFsBackendFactory } from './fs-backend.js';
 import { BrowserRepo } from './repo.js';
 import { importRepo as importIntoFs } from './export-import.js';
+import { classifyStorageError, MutationQueueRegistry } from './durability.js';
 import {
   InvalidRepoIdError,
+  QuotaExceededError,
   RepoExistsError,
   RepoNotFoundError,
   StorageError,
+  StorageLostError,
 } from './errors.js';
 
 /** Prefix applied to every repo's IndexedDB namespace, keeping them grouped. */
@@ -47,6 +50,26 @@ export interface RepoInfo {
   namespace: string;
 }
 
+/** The health of one registered repository's backing store. */
+export interface RepoIntegrity {
+  /** The repository id, as recorded in the registry. */
+  id: string;
+  /**
+   * `ok` — the store holds data for this repo.
+   * `lost` — the registry knows this id but its store is empty/evicted; reading
+   * it would silently return a wrong (empty) answer, so it is surfaced instead.
+   */
+  status: 'ok' | 'lost';
+}
+
+/** A whole-manager integrity report, returned by {@link RepoManager.checkIntegrity}. */
+export interface IntegrityReport {
+  /** True when every registered repo has backing data. */
+  healthy: boolean;
+  /** Per-repo health, one entry per registered id. */
+  repos: RepoIntegrity[];
+}
+
 function isEnoent(err: unknown): boolean {
   return (
     typeof err === 'object' &&
@@ -70,6 +93,12 @@ function assertValidRepoId(id: string): void {
 export class RepoManager {
   private readonly backendFactory: FsBackendFactory;
   private readonly registry: FsBackend;
+  /**
+   * One mutation queue per repo id, shared by every handle this manager hands
+   * out for that id, so all mutations to a repo serialize even across separate
+   * `openRepo` calls on the same manager.
+   */
+  private readonly mutationQueues = new MutationQueueRegistry();
 
   constructor(options: RepoManagerOptions = {}) {
     this.backendFactory = options.backendFactory ?? lightningFsBackendFactory;
@@ -101,6 +130,12 @@ export class RepoManager {
     try {
       await this.registry.promises.writeFile(MANIFEST_PATH, JSON.stringify(unique), 'utf8');
     } catch (err) {
+      if (classifyStorageError(err) === 'quota') {
+        throw new QuotaExceededError(
+          'Failed to persist the repository registry: the browser storage quota was exceeded.',
+          err,
+        );
+      }
       throw new StorageError('Failed to persist the repository registry.', err);
     }
   }
@@ -130,7 +165,7 @@ export class RepoManager {
       throw new RepoExistsError(id);
     }
     const backend = this.backendFactory(this.nsFor(id));
-    const repo = new BrowserRepo(id, backend);
+    const repo = new BrowserRepo(id, backend, this.mutationQueues.for(id));
     await repo.ensureInitialized();
     await this.writeManifest([...ids, id]);
     return repo;
@@ -148,7 +183,7 @@ export class RepoManager {
       throw new RepoNotFoundError(id);
     }
     const backend = this.backendFactory(this.nsFor(id));
-    const repo = new BrowserRepo(id, backend);
+    const repo = new BrowserRepo(id, backend, this.mutationQueues.for(id));
     // Re-ensure init so a fresh handle after reopen has a usable working tree;
     // git.init is idempotent and does not destroy existing content.
     await repo.ensureInitialized();
@@ -182,7 +217,7 @@ export class RepoManager {
       throw new RepoExistsError(id);
     }
     const backend = this.backendFactory(this.nsFor(id));
-    const repo = new BrowserRepo(id, backend);
+    const repo = new BrowserRepo(id, backend, this.mutationQueues.for(id));
     try {
       await importIntoFs(backend.fs, repo.workDir, archive);
     } catch (err) {
@@ -193,6 +228,70 @@ export class RepoManager {
     }
     await this.writeManifest([...ids, id]);
     return repo;
+  }
+
+  /**
+   * Check every registered repository's backing store and report which, if any,
+   * have been lost (registry knows the id but the store is empty/evicted).
+   *
+   * This is the storage-loss surfacing required by the durability contract:
+   * without it, a lost store reads as an empty-but-valid repo and a caller
+   * silently gets the wrong answer. With it, the caller can detect the loss and
+   * offer recovery (e.g. re-import from an export).
+   */
+  async checkIntegrity(): Promise<IntegrityReport> {
+    const ids = await this.readManifest();
+    const repos: RepoIntegrity[] = [];
+    for (const id of ids) {
+      const empty = await this.isStoreEmpty(id);
+      repos.push({ id, status: empty ? 'lost' : 'ok' });
+    }
+    return { healthy: repos.every((r) => r.status === 'ok'), repos };
+  }
+
+  /**
+   * Open a repository, but first assert its backing store still holds data.
+   *
+   * Identical to {@link openRepo} on a healthy repo. If the repo is registered
+   * but its store was lost, this throws {@link StorageLostError} rather than
+   * returning a handle that would read as empty — so a lost store never
+   * masquerades as a valid empty repo.
+   *
+   * @throws {RepoNotFoundError} if no repo with that id exists.
+   * @throws {StorageLostError} if the repo's backing store is empty/lost.
+   */
+  async openRepoChecked(id: string): Promise<BrowserRepo> {
+    assertValidRepoId(id);
+    const ids = await this.readManifest();
+    if (!ids.includes(id)) {
+      throw new RepoNotFoundError(id);
+    }
+    if (await this.isStoreEmpty(id)) {
+      throw new StorageLostError(id);
+    }
+    return this.openRepo(id);
+  }
+
+  /**
+   * Whether a repo's backing store has no working-tree data. A healthy repo
+   * always has an initialized `.git` under its work dir, so an empty (or
+   * missing) namespace means the store was never written or was lost.
+   */
+  private async isStoreEmpty(id: string): Promise<boolean> {
+    const backend = this.backendFactory(this.nsFor(id));
+    try {
+      const names = await backend.promises.readdir('/');
+      if (names.length === 0) return true;
+      // A live repo has a /work directory with a .git inside it.
+      if (!names.includes('work')) return true;
+      const work = await backend.promises.readdir('/work');
+      return !work.includes('.git');
+    } catch (err) {
+      if (isEnoent(err)) return true;
+      // An unexpected read fault is not a clean "empty" signal; treat the store
+      // as present so the loss path never fires on a transient read error.
+      return false;
+    }
   }
 
   /**
@@ -210,6 +309,7 @@ export class RepoManager {
     const backend = this.backendFactory(this.nsFor(id));
     await wipeTree(backend, '/');
     await this.writeManifest(ids.filter((x) => x !== id));
+    await this.mutationQueues.release(id);
   }
 }
 

@@ -33,6 +33,10 @@ export type BrowserReposErrorCode =
   | 'INVALID_ARCHIVE'
   /** An archive entry was rejected on import (path traversal, oversize, etc.). */
   | 'ARCHIVE_ENTRY_REJECTED'
+  /** The browser storage quota was exceeded while writing. */
+  | 'QUOTA_EXCEEDED'
+  /** A repo known to the registry has no backing data — the store was lost. */
+  | 'STORAGE_LOST'
   /** An underlying IndexedDB / filesystem operation failed. */
   | 'STORAGE_ERROR';
 
@@ -162,6 +166,40 @@ export class ArchiveEntryRejectedError extends BrowserReposError {
   constructor(message: string) {
     super('ARCHIVE_ENTRY_REJECTED', message);
     this.name = 'ArchiveEntryRejectedError';
+  }
+}
+
+/**
+ * The browser's storage quota was exceeded while writing to IndexedDB. This is
+ * surfaced *distinctly* from a generic {@link StorageError} because the caller's
+ * response differs: a quota error is actionable (free space, prune repos, ask
+ * for persistent storage), whereas a generic storage fault usually is not. The
+ * underlying `QuotaExceededError` / `DOMException` (name `QuotaExceededError` or
+ * legacy code 22) is attached as `cause`.
+ */
+export class QuotaExceededError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('QUOTA_EXCEEDED', message, cause === undefined ? undefined : { cause });
+    this.name = 'QuotaExceededError';
+  }
+}
+
+/**
+ * A repository the registry knows about has no backing data — its IndexedDB
+ * store was unexpectedly emptied or evicted (quota pressure, a cleared profile,
+ * a browser storage reset). Surfaced *distinctly* so a caller never mistakes a
+ * lost store for an empty-but-valid repo and silently returns the wrong answer;
+ * instead it can offer recovery from an export. See
+ * {@link RepoManager.checkIntegrity}.
+ */
+export class StorageLostError extends BrowserReposError {
+  constructor(id: string, message?: string) {
+    super(
+      'STORAGE_LOST',
+      message ??
+        `Repository "${id}" is known to the registry but its backing store is empty or lost — the data was evicted or the store was cleared.`,
+    );
+    this.name = 'StorageLostError';
   }
 }
 
