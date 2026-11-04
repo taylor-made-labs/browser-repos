@@ -67,8 +67,14 @@
  * - a top-level `README.md` documents install, a quickstart, the full API
  *   reference, the error table, and the durability caveats.
  *
- * Remote sync (the operations that will *throw* the remote error family) arrives
- * in a later slice behind this same surface.
+ * Slice 7 adds optional remote sync — the real safety net against a browser
+ * clear. Browser storage is *not* a backup; the {@link RemoteSyncTarget} port
+ * (with its {@link GitHubSyncTarget} adapter) is how a caller pushes a repo's
+ * git data to a remote and pulls it back. It is strictly opt-in and
+ * caller-driven: the core carries no network code and no dependency on the
+ * remote module, so nothing syncs unless the caller explicitly calls it. The
+ * remote ops throw the remote error family defined above, and credentials come
+ * from a caller-supplied per-request hook that the library never stores.
  */
 
 /** Library semantic version, exposed for consumers and diagnostics. */
@@ -154,3 +160,19 @@ export {
   ConflictError,
 } from './errors.js';
 export type { BrowserReposErrorCode } from './errors.js';
+
+// ---- Optional remote sync (slice 7). Opt-in; the core never imports this. ----
+export { GitHubSyncTarget, redactCredentials } from './remote/index.js';
+export type {
+  RemoteSyncTarget,
+  GitHubSyncTargetOptions,
+  SyncFs,
+  SyncCredentials,
+  CredentialRequest,
+  CredentialHook,
+  SyncOptions,
+  PushOptions,
+  PullOptions,
+  CloneOptions,
+  PushOutcome,
+} from './remote/index.js';
