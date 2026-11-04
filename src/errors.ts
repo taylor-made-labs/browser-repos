@@ -19,6 +19,8 @@ export type BrowserReposErrorCode =
   | 'INVALID_PATH'
   /** A file or directory was not found. */
   | 'NOT_FOUND'
+  /** A commit was attempted with nothing staged in the index. */
+  | 'NOTHING_STAGED'
   /** An underlying IndexedDB / filesystem operation failed. */
   | 'STORAGE_ERROR';
 
@@ -72,6 +74,14 @@ export class NotFoundError extends BrowserReposError {
   constructor(path: string) {
     super('NOT_FOUND', `Path not found: "${path}".`);
     this.name = 'NotFoundError';
+  }
+}
+
+/** A commit was attempted while the index held no staged changes. */
+export class NothingStagedError extends BrowserReposError {
+  constructor() {
+    super('NOTHING_STAGED', 'Nothing staged to commit: stage changes before committing.');
+    this.name = 'NothingStagedError';
   }
 }
 

@@ -14,6 +14,14 @@ import git from 'isomorphic-git';
 import type { FsBackend } from './fs-backend.js';
 import { NotFoundError, StorageError } from './errors.js';
 import { normalizeRelPath, toFsPath } from './path.js';
+import { GitOps } from './git-ops.js';
+import type {
+  CommitEntry,
+  CommitOptions,
+  FileStatus,
+  LogOptions,
+  StatusReport,
+} from './git-ops.js';
 
 /** Absolute working-tree root inside the per-repo filesystem namespace. */
 const WORK_DIR = '/work';
@@ -45,12 +53,14 @@ export class BrowserRepo {
   readonly namespace: string;
 
   private readonly backend: FsBackend;
+  private readonly git: GitOps;
 
   /** @internal — constructed by the repo manager. */
   constructor(id: string, backend: FsBackend) {
     this.id = id;
     this.namespace = backend.namespace;
     this.backend = backend;
+    this.git = new GitOps(backend.fs, WORK_DIR);
   }
 
   /**
@@ -172,6 +182,50 @@ export class BrowserRepo {
       if (isEnoent(err)) throw new NotFoundError(rel);
       throw new StorageError(`Failed to delete file "${rel}".`, err);
     }
+  }
+
+  // ---- Git operations (slice 2): offline status, staging, commit, history ----
+
+  /**
+   * Report the working-tree status of the whole repo: every path differing from
+   * HEAD (sorted), plus a `clean` flag. See {@link StatusReport}.
+   */
+  async status(): Promise<StatusReport> {
+    return this.git.status();
+  }
+
+  /** Status of a single repo-relative path. See {@link FileStatus}. */
+  async statusOf(path: string): Promise<FileStatus> {
+    return this.git.statusOf(path);
+  }
+
+  /** Stage a file (`git add`). Path is validated against traversal. */
+  async stage(path: string): Promise<void> {
+    return this.git.stage(path);
+  }
+
+  /** Stage the removal of a tracked file from the index (`git rm --cached`). */
+  async stageRemoval(path: string): Promise<void> {
+    return this.git.stageRemoval(path);
+  }
+
+  /** Unstage a path, returning its index entry to HEAD (`git reset <path>`). */
+  async unstage(path: string): Promise<void> {
+    return this.git.unstage(path);
+  }
+
+  /**
+   * Commit the current index. Author is plain commit metadata supplied by the
+   * caller (never a credential). Throws {@link NothingStagedError} if nothing is
+   * staged. Returns the new commit oid.
+   */
+  async commit(options: CommitOptions): Promise<string> {
+    return this.git.commit(options);
+  }
+
+  /** List commits newest-first, optionally limited by `depth`. */
+  async log(options?: LogOptions): Promise<CommitEntry[]> {
+    return this.git.log(options);
   }
 
   /** Create every missing parent directory for a repo-relative file path. */
