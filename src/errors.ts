@@ -1,10 +1,23 @@
 /**
  * Error taxonomy for browser-repos.
  *
- * The engineering rules require surfacing storage, path, and (later) network
- * errors *distinctly*. Every error thrown by the library is a subclass of
- * {@link BrowserReposError} and carries a stable, machine-readable `code`, so
- * callers can branch on `code` without matching on message strings.
+ * Every error thrown by the library is a subclass of {@link BrowserReposError}
+ * and carries a stable, machine-readable `code`, so callers can branch on
+ * `code` without matching on message strings. Each subclass is separately
+ * `instanceof`-catchable, so a caller can also `catch` the exact family it
+ * cares about.
+ *
+ * The taxonomy has two groups:
+ *
+ * - **Local** — path/validation, repo lifecycle, git, branches, export/import,
+ *   and storage. These are thrown by the local, offline operations that ship
+ *   in slices 1–5.
+ * - **Remote / sync** — {@link NetworkError}, {@link CorsError},
+ *   {@link AuthError}, {@link DivergenceError}, {@link ConflictError}. These are
+ *   the shared contract a future `RemoteSyncTarget` (a later slice) will throw.
+ *   They are defined here *now* so adopters can see and handle the full error
+ *   contract up front, but **this slice ships no network code** — only the typed
+ *   classes and their `code`/`name` discriminators.
  */
 
 /** Stable, machine-readable error codes. Extended as later slices add ops. */
@@ -38,7 +51,18 @@ export type BrowserReposErrorCode =
   /** A repo known to the registry has no backing data — the store was lost. */
   | 'STORAGE_LOST'
   /** An underlying IndexedDB / filesystem operation failed. */
-  | 'STORAGE_ERROR';
+  | 'STORAGE_ERROR'
+  // ---- Remote / sync family (contract for a later slice; no network code here) ----
+  /** A remote request failed at the network layer (offline, DNS, timeout, reset). */
+  | 'NETWORK_ERROR'
+  /** A remote request was blocked by the browser's cross-origin (CORS) policy. */
+  | 'CORS_ERROR'
+  /** A remote rejected the request as unauthenticated or unauthorized. */
+  | 'AUTH_ERROR'
+  /** Local and remote histories have diverged and cannot fast-forward. */
+  | 'DIVERGENCE_ERROR'
+  /** A merge/sync left conflicting changes that need resolution. */
+  | 'CONFLICT_ERROR';
 
 /** Base class for every error this library throws. */
 export class BrowserReposError extends Error {
@@ -208,5 +232,93 @@ export class StorageError extends BrowserReposError {
   constructor(message: string, cause?: unknown) {
     super('STORAGE_ERROR', message, cause === undefined ? undefined : { cause });
     this.name = 'StorageError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Remote / sync error family.
+//
+// These are the shared error contract for a future `RemoteSyncTarget` (push,
+// pull, clone against a remote). No network operation ships in this slice; the
+// classes are defined now so an adopter can write `catch` handlers for the full
+// contract today, and so slice 7 throws these exact types rather than inventing
+// its own. Each carries a distinct `code` and `name` discriminator and is
+// separately `instanceof`-catchable, like every other error here.
+// ---------------------------------------------------------------------------
+
+/**
+ * A remote request failed at the network transport layer — the client is
+ * offline, DNS failed, the connection timed out, or the socket was reset — so
+ * no HTTP response was ever received. Distinct from {@link CorsError} (a
+ * response the browser refused to expose) and {@link AuthError} (a response
+ * that rejected the credential): a `NetworkError` means *nothing came back*, so
+ * a retry or an offline-mode fallback is the usual response. The underlying
+ * cause (a `TypeError` from `fetch`, an `AbortError`, etc.) is attached as
+ * `cause`.
+ */
+export class NetworkError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('NETWORK_ERROR', message, cause === undefined ? undefined : { cause });
+    this.name = 'NetworkError';
+  }
+}
+
+/**
+ * A remote request was blocked by the browser's cross-origin policy (CORS): the
+ * server is reachable but did not return the `Access-Control-Allow-Origin`
+ * headers the browser requires, so the response is withheld from script.
+ * Surfaced *distinctly* from {@link NetworkError} because the fix is different —
+ * a CORS failure is a remote-configuration problem (the host must allow this
+ * origin, or the caller must use a proxy), not a transient connectivity blip,
+ * so retrying unchanged will not help.
+ */
+export class CorsError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('CORS_ERROR', message, cause === undefined ? undefined : { cause });
+    this.name = 'CorsError';
+  }
+}
+
+/**
+ * A remote rejected the request as unauthenticated or unauthorized (HTTP 401 /
+ * 403): a missing, expired, or insufficient credential. Surfaced *distinctly*
+ * so a caller can prompt for re-authentication rather than retrying blindly.
+ * The library never stores a credential — the caller supplies one per request
+ * through a hook — so this error carries no secret, only the fact of the
+ * rejection.
+ */
+export class AuthError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('AUTH_ERROR', message, cause === undefined ? undefined : { cause });
+    this.name = 'AuthError';
+  }
+}
+
+/**
+ * The local and remote histories have diverged: both advanced past their common
+ * ancestor, so a sync cannot fast-forward in either direction. Distinct from
+ * {@link ConflictError} — divergence is about the *shape of history* (the branch
+ * moved on both sides and needs a merge or rebase to reconcile), detected before
+ * any file-level merge is attempted. A caller typically responds by offering to
+ * pull-then-merge, rebase, or force one side.
+ */
+export class DivergenceError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('DIVERGENCE_ERROR', message, cause === undefined ? undefined : { cause });
+    this.name = 'DivergenceError';
+  }
+}
+
+/**
+ * A merge or sync produced conflicting changes to the same content that cannot
+ * be resolved automatically. Distinct from {@link DivergenceError}: divergence
+ * is detected from history shape *before* merging, whereas a `ConflictError` is
+ * the result of attempting the merge and finding overlapping edits that need a
+ * human (or an explicit strategy) to resolve.
+ */
+export class ConflictError extends BrowserReposError {
+  constructor(message: string, cause?: unknown) {
+    super('CONFLICT_ERROR', message, cause === undefined ? undefined : { cause });
+    this.name = 'ConflictError';
   }
 }
