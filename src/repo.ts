@@ -24,6 +24,7 @@ import type {
 } from './git-ops.js';
 import { BranchOps } from './branch-ops.js';
 import type { CreateBranchOptions } from './branch-ops.js';
+import { exportRepo } from './export-import.js';
 
 /** Absolute working-tree root inside the per-repo filesystem namespace. */
 const WORK_DIR = '/work';
@@ -272,6 +273,31 @@ export class BrowserRepo {
    */
   async deleteBranch(name: string): Promise<void> {
     return this.branches.deleteBranch(name);
+  }
+
+  // ---- Lossless export / import (slice 4): the round-trip slice ----
+
+  /**
+   * Export the entire repository as a single portable archive: the working
+   * tree, the complete `.git` (all objects, refs, every branch, full history),
+   * the index/staged state, and untracked files — all byte-exact. Reconstruct
+   * it with {@link RepoManager.importRepo}.
+   *
+   * The archive is credential-free by construction: the library never writes a
+   * credential to repo data, so none can appear in it.
+   */
+  async export(): Promise<Uint8Array> {
+    return exportRepo(this.backend.fs, WORK_DIR);
+  }
+
+  /** The repo's filesystem backend. @internal — used by the repo manager. */
+  get fsBackend(): FsBackend {
+    return this.backend;
+  }
+
+  /** The absolute working-tree root inside this repo's namespace. @internal */
+  get workDir(): string {
+    return WORK_DIR;
   }
 
   /** Create every missing parent directory for a repo-relative file path. */

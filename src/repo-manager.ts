@@ -12,6 +12,7 @@
 import type { FsBackend, FsBackendFactory } from './fs-backend.js';
 import { lightningFsBackendFactory } from './fs-backend.js';
 import { BrowserRepo } from './repo.js';
+import { importRepo as importIntoFs } from './export-import.js';
 import {
   InvalidRepoIdError,
   RepoExistsError,
@@ -151,6 +152,46 @@ export class RepoManager {
     // Re-ensure init so a fresh handle after reopen has a usable working tree;
     // git.init is idempotent and does not destroy existing content.
     await repo.ensureInitialized();
+    return repo;
+  }
+
+  /**
+   * Reconstruct a repository from an archive produced by {@link BrowserRepo.export}.
+   *
+   * Creates a new repository under `id` (a fresh IndexedDB namespace) whose
+   * filesystem is written byte-for-byte from the archive: same files and bytes,
+   * same branches, same commit oids and history, same staged and untracked
+   * state, and the same current branch. Unlike {@link createRepo}, this does
+   * **not** run `git.init` — the archive already carries the full `.git`, and
+   * re-initializing would clobber it.
+   *
+   * Every archive entry's path is validated before any write (traversal /
+   * absolute / malformed / oversize entries are rejected). A rejected or
+   * malformed archive leaves no repo behind: the new namespace is wiped and the
+   * id is not added to the registry.
+   *
+   * @throws {InvalidRepoIdError} if the id is malformed.
+   * @throws {RepoExistsError} if a repo with that id already exists.
+   * @throws {InvalidArchiveError} if the archive is structurally invalid.
+   * @throws {ArchiveEntryRejectedError} if any entry fails validation.
+   */
+  async importRepo(id: string, archive: Uint8Array): Promise<BrowserRepo> {
+    assertValidRepoId(id);
+    const ids = await this.readManifest();
+    if (ids.includes(id)) {
+      throw new RepoExistsError(id);
+    }
+    const backend = this.backendFactory(this.nsFor(id));
+    const repo = new BrowserRepo(id, backend);
+    try {
+      await importIntoFs(backend.fs, repo.workDir, archive);
+    } catch (err) {
+      // importIntoFs already rolls back its own writes on failure; just make
+      // sure the namespace is clean and do not register the id.
+      await wipeTree(backend, '/').catch(() => undefined);
+      throw err;
+    }
+    await this.writeManifest([...ids, id]);
     return repo;
   }
 
