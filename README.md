@@ -26,6 +26,7 @@ no `eval`.
 - [Public API reference](#public-api-reference)
 - [Error taxonomy](#error-taxonomy)
 - [Durability](#durability)
+- [Remote sync](#remote-sync)
 - [MV3 and offline notes](#mv3-and-offline-notes)
 - [Hard boundaries](#hard-boundaries)
 - [License](#license)
@@ -214,15 +215,13 @@ try {
 | `StorageLostError` | `STORAGE_LOST` | A registered repo's store was evicted/cleared. | Recover from an export. |
 | `StorageError` | `STORAGE_ERROR` | An underlying IndexedDB/filesystem op failed. | Usually unrecoverable; surface to the user. |
 
-### Remote / sync errors (contract available now; network ops land in a later slice)
+### Remote / sync errors
 
-These classes are **defined and exported today** so you can write `catch`
-handlers for the full contract up front. The operations that *throw* them (push,
-pull, clone against a remote) ship in a later slice — **this release contains no
-network code**. Each is constructable, `instanceof BrowserReposError`, and
-carries a distinct `code`/`name`.
+These are thrown by the optional [remote sync](#remote-sync) module (push, pull,
+clone against a remote). Each is constructable, `instanceof BrowserReposError`,
+and carries a distinct `code`/`name`, so you can `catch` the exact family.
 
-| Error | `code` | Thrown when (future) | How to handle |
+| Error | `code` | Thrown when | How to handle |
 |---|---|---|---|
 | `NetworkError` | `NETWORK_ERROR` | Offline, DNS failure, timeout, reset — no response. | Retry, or fall back to offline mode. |
 | `CorsError` | `CORS_ERROR` | The browser blocked the response on cross-origin policy. | Fix remote CORS config or use a proxy. |
@@ -247,14 +246,52 @@ loss *detectable and distinct* rather than silent:
 Full detail, including the mutation-serialization model, is in
 [`DURABILITY.md`](DURABILITY.md).
 
+## Remote sync
+
+**Browser storage is not a backup.** A `RemoteSyncTarget` is how you actually
+protect a repo against a browser clear or storage eviction: it pushes the repo's
+git data to a real remote and pulls it back. It is **optional and opt-in** — the
+core never imports it, so an app that does not sync ships no network code and
+nothing ever goes over the wire unless you call it.
+
+```ts
+import { RepoManager, GitHubSyncTarget } from '@taylor-made-labs/browser-repos';
+// Supply the HTTP client for your environment (browser shown here):
+import http from 'isomorphic-git/http/web';
+
+const repo = await new RepoManager().openRepo('my-notes');
+
+const remote = new GitHubSyncTarget({
+  url: 'https://github.com/you/my-notes-backup.git', // no credential in the URL
+  http,
+  // corsProxy is OFF by default; set it only if you need one:
+  // corsProxy: 'https://cors.isomorphic-git.org',
+});
+
+// The credential is supplied PER REQUEST by your hook and never stored.
+await remote.push(repo.fsBackend.fs, repo.workDir, {
+  ref: 'main',
+  getCredentials: () => ({ username: myToken, password: 'x-oauth-basic' }),
+});
+```
+
+The credential contract: the library **never stores a credential**. You provide
+one per request through `getCredentials`; the adapter calls it at request time,
+uses the value in memory for that one request, and discards it. It is never
+written to IndexedDB, repo data, config, an export, a commit, a remote URL, or a
+log, and is redacted from any thrown error. Full detail — the port interface, the
+GitHub adapter, the CORS-proxy opt-in, and the typed errors — is in
+[`SYNC.md`](SYNC.md).
+
 ## MV3 and offline notes
 
 - **MV3-compatible:** executable dependencies are bundled; there is no runtime
   CDN load and no `eval`, so the library runs inside a Manifest V3 service
   worker.
 - **IndexedDB only:** the library never uses `localStorage` or `chrome.storage`.
-- **Offline-first:** every operation in this release is local. Nothing reaches
-  the network.
+- **Offline-first:** every core operation is local. The only code that reaches
+  the network is the optional [remote sync](#remote-sync) module, and only when
+  you explicitly call it.
 
 ## Hard boundaries
 
