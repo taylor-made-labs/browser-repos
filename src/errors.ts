@@ -21,6 +21,14 @@ export type BrowserReposErrorCode =
   | 'NOT_FOUND'
   /** A commit was attempted with nothing staged in the index. */
   | 'NOTHING_STAGED'
+  /** A branch name was empty, malformed, or an otherwise invalid git ref. */
+  | 'INVALID_BRANCH_NAME'
+  /** No branch with the requested name exists. */
+  | 'BRANCH_NOT_FOUND'
+  /** A branch operation was refused because it targets the current branch. */
+  | 'BRANCH_IN_USE'
+  /** A checkout was refused because the working tree has uncommitted changes. */
+  | 'UNCOMMITTED_CHANGES'
   /** An underlying IndexedDB / filesystem operation failed. */
   | 'STORAGE_ERROR';
 
@@ -82,6 +90,48 @@ export class NothingStagedError extends BrowserReposError {
   constructor() {
     super('NOTHING_STAGED', 'Nothing staged to commit: stage changes before committing.');
     this.name = 'NothingStagedError';
+  }
+}
+
+/** A branch name was empty, malformed, or an otherwise invalid git ref. */
+export class InvalidBranchNameError extends BrowserReposError {
+  constructor(message: string) {
+    super('INVALID_BRANCH_NAME', message);
+    this.name = 'InvalidBranchNameError';
+  }
+}
+
+/** No branch with the requested name exists. */
+export class BranchNotFoundError extends BrowserReposError {
+  constructor(name: string) {
+    super('BRANCH_NOT_FOUND', `No branch named "${name}" exists.`);
+    this.name = 'BranchNotFoundError';
+  }
+}
+
+/**
+ * A branch operation was refused because it targets the current branch, e.g.
+ * deleting the branch that HEAD currently points at.
+ */
+export class BranchInUseError extends BrowserReposError {
+  constructor(name: string) {
+    super('BRANCH_IN_USE', `Cannot operate on "${name}" while it is the current branch.`);
+    this.name = 'BranchInUseError';
+  }
+}
+
+/**
+ * A checkout was refused because the working tree holds uncommitted changes to
+ * tracked files. The chosen, tested behavior for a switch that would otherwise
+ * clobber unsaved work — commit or discard first.
+ */
+export class UncommittedChangesError extends BrowserReposError {
+  constructor(target: string) {
+    super(
+      'UNCOMMITTED_CHANGES',
+      `Cannot check out "${target}" with uncommitted changes in the working tree: commit or discard them first.`,
+    );
+    this.name = 'UncommittedChangesError';
   }
 }
 
