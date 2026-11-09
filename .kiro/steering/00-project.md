@@ -24,7 +24,7 @@ designed to be **reusable outside** that product.
 - **Secrets never persisted** — credentials come from caller hooks and are never written to
   repo data, remote URLs, exports, commits, or logs.
 
-## Planned capability surface
+## Capability surface (shipped)
 
 Multiple repos, reopen, file read/write, status, staging, commits, branches/checkouts,
 history, and lossless export/import (working tree, `.git`, binaries, staged + untracked,
@@ -32,15 +32,15 @@ branches, history) with path and archive-entry validation.
 
 ## Dependencies (pinned, bundled)
 
-Expected core dependencies are **isomorphic-git** (pure-JS Git) and
+Core dependencies are **isomorphic-git** (pure-JS Git) and
 **@isomorphic-git/lightning-fs** (IndexedDB filesystem). They are added at **pinned exact
 versions**, bundled for MV3, and recorded in [`NOTICE`](../../NOTICE) when included.
 
 ## Verification
 
-The dev sandbox has no public network, so `npm install` cannot reach the registry here.
-Author and commit locally; **GitHub Actions CI is the source of truth** for "it builds and
-tests pass" (`npm ci` → typecheck → lint → test → build).
+**GitHub Actions CI is the source of truth** for "it builds and tests pass" (`npm ci` →
+typecheck → lint → test → build). The same commands also pass in a fresh clone with registry
+access.
 
 ## `.kiro` is public
 

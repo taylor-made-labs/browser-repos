@@ -288,6 +288,9 @@ GitHub adapter, the CORS-proxy opt-in, and the typed errors — is in
 - **MV3-compatible:** executable dependencies are bundled; there is no runtime
   CDN load and no `eval`, so the library runs inside a Manifest V3 service
   worker.
+  This is checked by a source scan and a service-worker-like runtime test, **not** by a
+  real extension run. See [`docs/mv3-compat.md`](docs/mv3-compat.md) for what is and is not
+  proven.
 - **IndexedDB only:** the library never uses `localStorage` or `chrome.storage`.
 - **Offline-first:** every core operation is local. The only code that reaches
   the network is the optional [remote sync](#remote-sync) module, and only when
