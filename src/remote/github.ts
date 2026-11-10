@@ -24,6 +24,7 @@
  *    stripped from the message by {@link redactCredentials}.
  */
 
+import '../buffer-polyfill.js';
 import git from 'isomorphic-git';
 import type { GitHttpRequest, GitHttpResponse, HttpClient } from 'isomorphic-git/http/web';
 import {

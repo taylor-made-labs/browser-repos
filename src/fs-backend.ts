@@ -28,6 +28,12 @@ export interface PromiseFs {
   rmdir(path: string): Promise<void>;
   stat(path: string): Promise<{ isFile(): boolean; isDirectory(): boolean; size: number }>;
   lstat(path: string): Promise<{ isFile(): boolean; isDirectory(): boolean; size: number }>;
+  /**
+   * Persist pending writes to IndexedDB now. LightningFS saves its directory index on a
+   * ~500ms debounce, so an awaited write is not yet durable without this. Optional so
+   * test backends may omit it.
+   */
+  flush?(): Promise<void>;
 }
 
 /**

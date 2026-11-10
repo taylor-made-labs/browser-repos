@@ -10,6 +10,7 @@
  * escape the working tree are rejected before they ever reach the filesystem.
  */
 
+import './buffer-polyfill.js';
 import git from 'isomorphic-git';
 import type { FsBackend } from './fs-backend.js';
 import { NotFoundError, QuotaExceededError, StorageError } from './errors.js';
@@ -111,7 +112,16 @@ export class BrowserRepo {
    * @internal
    */
   private runMutation<T>(fn: () => Promise<T>): Promise<T> {
-    return this.mutations.run(fn);
+    return this.mutations.run(() => this.durably(fn));
+  }
+
+  /** Run `fn`, then flush to IndexedDB so a resolved mutation survives an immediate reload. */
+  private async durably<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } finally {
+      await this.backend.promises.flush?.();
+    }
   }
 
   /**
@@ -135,7 +145,7 @@ export class BrowserRepo {
    * callback.
    */
   async runExclusive<T>(fn: (tx: RepoTransaction) => Promise<T>): Promise<T> {
-    return this.mutations.run(() => fn(this.txApi));
+    return this.mutations.run(() => this.durably(() => fn(this.txApi)));
   }
 
   /**
@@ -191,6 +201,7 @@ export class BrowserRepo {
     } catch (err) {
       throw new StorageError(`Failed to initialize git repo "${this.id}".`, err);
     }
+    await this.backend.promises.flush?.();
   }
 
   /**
