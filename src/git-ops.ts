@@ -14,6 +14,7 @@
  * for any credential.
  */
 
+import './buffer-polyfill.js';
 import git from 'isomorphic-git';
 import type { PromiseFs } from './fs-backend.js';
 import { NothingStagedError, StorageError } from './errors.js';

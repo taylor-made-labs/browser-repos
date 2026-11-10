@@ -129,6 +129,7 @@ export class RepoManager {
     const unique = Array.from(new Set(ids)).sort();
     try {
       await this.registry.promises.writeFile(MANIFEST_PATH, JSON.stringify(unique), 'utf8');
+      await this.registry.promises.flush?.(); // durable before we report success
     } catch (err) {
       if (classifyStorageError(err) === 'quota') {
         throw new QuotaExceededError(

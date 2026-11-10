@@ -18,6 +18,7 @@
  * typed {@link BrowserReposError} subclass.
  */
 
+import './buffer-polyfill.js';
 import git from 'isomorphic-git';
 import type { PromiseFs } from './fs-backend.js';
 import {
